@@ -382,8 +382,8 @@ def load_dataset(dataset_num: int, progress_callback: Optional[Callable] = None)
             print(f"Error loading gallery image {gallery_img_path}: {e}")
             continue
         
-        # Reste pour probes (jusqu'à 4 par identité maximum)
-        for j, probe_img_path in enumerate(identity_images[1:5]):
+        # Reste pour probes (toutes les images restantes au lieu de seulement 4)
+        for probe_img_path in identity_images[1:]:
             try:
                 img = Image.open(probe_img_path).convert('L')
                 img = img.resize(target_size)
@@ -393,29 +393,39 @@ def load_dataset(dataset_num: int, progress_callback: Optional[Callable] = None)
                 ground_truth.append(True)  # Les probes de la même identité sont enrolled
             except Exception as e:
                 print(f"Error loading probe image {probe_img_path}: {e}")
-        
-    # Ajouter quelques probes non-enrolled (environ 1/3 du total)
-    # On utilise les premières images des identités qui ne sont pas dans la gallery
-    non_enrolled_count = len(probes) // 2
+    
+    # Définir un nombre raisonnable d'identités non-enrolled (environ 25% des identités totales)
+    # pour ne pas surcharger le dataset mais avoir suffisamment de cas négatifs
+    non_enrolled_identities = int(len(sorted_identities) * 0.25)
+    
+    # Ajouter les probes non-enrolled
+    if progress_callback:
+        progress_callback(80, f"Adding non-enrolled probes...")
+    
+    non_enrolled_count = 0
     identity_idx = 0
     
-    while len(probe_ids) < len(probes) + non_enrolled_count and identity_idx < len(sorted_identities):
+    while non_enrolled_count < non_enrolled_identities and identity_idx < len(sorted_identities):
         identity = sorted_identities[identity_idx]
         
-        # Si l'identité n'est pas dans les 3/4 premières de la gallery, on l'utilise comme non-enrolled
-        if identity_idx >= len(gallery_ids) * 3 // 4:
+        # Si l'identité n'est pas dans la gallery (ou vers la fin de la liste pour augmenter la variété)
+        if identity not in gallery_ids or identity_idx >= len(gallery_ids) * 3 // 4:
             identity_images = identities[identity]
             
             if identity_images:
-                try:
-                    img = Image.open(identity_images[0]).convert('L')
-                    img = img.resize(target_size)
-                    img_array = np.array(img) / 255.0
-                    probes.append(img_array)
-                    probe_ids.append(identity)
-                    ground_truth.append(False)  # Non-enrolled
-                except Exception as e:
-                    print(f"Error loading non-enrolled probe {identity_images[0]}: {e}")
+                # Ajouter toutes les images de cette identité comme non-enrolled
+                for probe_img_path in identity_images:
+                    try:
+                        img = Image.open(probe_img_path).convert('L')
+                        img = img.resize(target_size)
+                        img_array = np.array(img) / 255.0
+                        probes.append(img_array)
+                        probe_ids.append(identity)
+                        ground_truth.append(False)  # Non-enrolled
+                    except Exception as e:
+                        print(f"Error loading non-enrolled probe {probe_img_path}: {e}")
+                
+                non_enrolled_count += 1
         
         identity_idx += 1
     
@@ -428,7 +438,7 @@ def load_dataset(dataset_num: int, progress_callback: Optional[Callable] = None)
         progress_callback(90, f"Creating dataset object with {len(gallery)} gallery images and {len(probes)} probes...")
     
     # Créer et retourner l'objet dataset
-    dataset = FaceDataset(gallery, probes, gallery_ids, probe_ids, ground_truth)
+    dataset = FaceDataset(gallery, probes, gallery_ids, probe_ids, ground_truth, dataset_path)
     
     if progress_callback:
         total_time = time.time() - start_time
@@ -436,65 +446,164 @@ def load_dataset(dataset_num: int, progress_callback: Optional[Callable] = None)
     
     return dataset
 
-
-def create_synthetic_dataset(n_subjects: int = 10, n_probes_per_subject: int = 3,
-                             img_size: int = 32, progress_callback: Optional[Callable] = None) -> FaceDataset:
+def create_synthetic_dataset(n_subjects: int = 20, n_probes_per_subject: int = 3,
+                            img_size: int = 48, n_imposters: int = 5,
+                            progress_callback: Optional[Callable] = None) -> FaceDataset:
     """
-    Create a synthetic dataset for testing.
+    Create a synthetic dataset for testing face authentication methods.
     
     Args:
-        n_subjects: Number of subjects to create
-        n_probes_per_subject: Number of test images per subject
-        img_size: Image size (square)
+        n_subjects: Number of enrolled subjects
+        n_probes_per_subject: Number of probe images per subject
+        img_size: Size of the synthetic images (img_size x img_size)
+        n_imposters: Number of imposters (non-enrolled subjects)
         progress_callback: Callback function for progress
         
     Returns:
-        FaceDataset: Synthetic dataset
+        FaceDataset: Synthetic dataset with gallery and probe images
     """
-    start_time = time.time()
-    
     if progress_callback:
-        progress_callback(10, "Generating synthetic data...")
+        progress_callback(5, "Generating synthetic dataset...")
     
-    # Generate random data
-    np.random.seed(42)  # For reproducibility
+    # Random seed for reproducibility
+    np.random.seed(42)
     
-    # Gallery: one image per subject
-    gallery = np.random.rand(n_subjects, img_size, img_size)
-    gallery_ids = list(range(1, n_subjects + 1))
-    
+    # Generate gallery images (one per subject)
     if progress_callback:
-        progress_callback(40, "Creating probes...")
+        progress_callback(20, f"Generating gallery images for {n_subjects} subjects...")
     
-    # Probes: several per subject, plus some impostors
-    n_probes = n_subjects * n_probes_per_subject
-    probes = np.zeros((n_probes, img_size, img_size))
+    gallery = []
+    gallery_ids = []
+    
+    for subject_id in range(n_subjects):
+        # Create a base pattern for the subject
+        base_pattern = np.random.rand(img_size, img_size) * 0.3
+        
+        # Add some structure (simulating facial features)
+        # Eyes
+        eye_x1, eye_y1 = img_size//3, img_size//3
+        eye_x2, eye_y2 = 2*img_size//3, img_size//3
+        eye_size = max(2, img_size//10)
+        
+        # Add eyes (darker regions)
+        base_pattern[eye_y1-eye_size//2:eye_y1+eye_size//2, 
+                    eye_x1-eye_size//2:eye_x1+eye_size//2] += 0.5
+        base_pattern[eye_y2-eye_size//2:eye_y2+eye_size//2, 
+                    eye_x2-eye_size//2:eye_x2+eye_size//2] += 0.5
+        
+        # Add mouth (darker region)
+        mouth_x, mouth_y = img_size//2, 2*img_size//3
+        mouth_width, mouth_height = img_size//2, img_size//6
+        base_pattern[mouth_y-mouth_height//2:mouth_y+mouth_height//2, 
+                    mouth_x-mouth_width//2:mouth_x+mouth_width//2] += 0.4
+        
+        # Add some noise and normalize
+        base_pattern += np.random.rand(img_size, img_size) * 0.1
+        base_pattern = np.clip(base_pattern, 0, 1)
+        
+        # Convert to uint8
+        base_pattern = (base_pattern * 255).astype(np.uint8)
+        
+        gallery.append(base_pattern)
+        gallery_ids.append(subject_id)
+    
+    # Generate probe images with variations of gallery images
+    if progress_callback:
+        progress_callback(50, "Generating probe images...")
+    
+    probes = []
     probe_ids = []
     ground_truth = []
     
-    probe_idx = 0
-    
-    # For each subject, create authentic probes and impostors
-    for i in range(n_subjects):
-        # Authentic probes (with noise)
-        for j in range(n_probes_per_subject - 1):
-            probes[probe_idx] = gallery[i] + 0.1 * np.random.randn(img_size, img_size)
-            probe_ids.append(gallery_ids[i])
-            ground_truth.append(True)
-            probe_idx += 1
+    # Enrolled probes (variations of gallery subjects)
+    for subject_id in range(n_subjects):
+        base_image = gallery[subject_id].copy()
         
-        # Impostor probe
-        probes[probe_idx] = np.random.rand(img_size, img_size)
-        fake_id = n_subjects + i + 1
-        probe_ids.append(fake_id)
-        ground_truth.append(False)
-        probe_idx += 1
+        for _ in range(n_probes_per_subject):
+            # Create a variation of the base image
+            variation = base_image.copy()
+            
+            # Add random noise
+            noise = np.random.normal(0, 15, (img_size, img_size))
+            variation = np.clip(variation + noise, 0, 255).astype(np.uint8)
+            
+            # Apply random brightness changes
+            brightness_factor = np.random.uniform(0.8, 1.2)
+            variation = np.clip(variation * brightness_factor, 0, 255).astype(np.uint8)
+            
+            # Apply slight geometric distortion
+            rows, cols = variation.shape
+            M = np.float32([[1, np.random.uniform(-0.1, 0.1), 0],
+                           [np.random.uniform(-0.1, 0.1), 1, 0]])
+            variation = cv2.warpAffine(variation, M, (cols, rows))
+            
+            probes.append(variation)
+            probe_ids.append(subject_id)
+            ground_truth.append(True)  # Enrolled user
     
-    # Create and return dataset object
-    dataset = FaceDataset(gallery, probes, gallery_ids, probe_ids, ground_truth)
+    # Imposters (non-enrolled subjects)
+    if progress_callback:
+        progress_callback(75, f"Generating {n_imposters} non-enrolled subjects...")
+    
+    for imposter_id in range(n_subjects, n_subjects + n_imposters):
+        # Create a distinctly different pattern
+        imposter_pattern = np.random.rand(img_size, img_size) * 0.5
+        
+        # Add some structure but in different positions
+        # Eyes
+        eye_x1, eye_y1 = img_size//4, img_size//4
+        eye_x2, eye_y2 = 3*img_size//4, img_size//4
+        eye_size = max(2, img_size//12)
+        
+        imposter_pattern[eye_y1-eye_size//2:eye_y1+eye_size//2, 
+                        eye_x1-eye_size//2:eye_x1+eye_size//2] += 0.4
+        imposter_pattern[eye_y2-eye_size//2:eye_y2+eye_size//2, 
+                        eye_x2-eye_size//2:eye_x2+eye_size//2] += 0.4
+        
+        # Add mouth
+        mouth_x, mouth_y = img_size//2, 3*img_size//4
+        mouth_width, mouth_height = img_size//3, img_size//8
+        imposter_pattern[mouth_y-mouth_height//2:mouth_y+mouth_height//2, 
+                        mouth_x-mouth_width//2:mouth_x+mouth_width//2] += 0.3
+        
+        # Add some noise and normalize
+        imposter_pattern += np.random.rand(img_size, img_size) * 0.15
+        imposter_pattern = np.clip(imposter_pattern, 0, 1)
+        
+        # Convert to uint8
+        imposter_pattern = (imposter_pattern * 255).astype(np.uint8)
+        
+        # Add variations
+        for _ in range(n_probes_per_subject // 2):
+            variation = imposter_pattern.copy()
+            
+            # Add random noise
+            noise = np.random.normal(0, 10, (img_size, img_size))
+            variation = np.clip(variation + noise, 0, 255).astype(np.uint8)
+            
+            # Apply random brightness changes
+            brightness_factor = np.random.uniform(0.9, 1.1)
+            variation = np.clip(variation * brightness_factor, 0, 255).astype(np.uint8)
+            
+            probes.append(variation)
+            probe_ids.append(imposter_id)
+            ground_truth.append(False)  # Non-enrolled user
+    
+    # Convert to numpy arrays
+    gallery_np = np.array(gallery)
+    probes_np = np.array(probes)
+    
+    # Create and return the dataset
+    dataset = FaceDataset(
+        gallery=gallery_np,
+        probes=probes_np,
+        gallery_ids=gallery_ids,
+        probe_ids=probe_ids,
+        ground_truth=ground_truth,
+        dataset_path="synthetic"
+    )
     
     if progress_callback:
-        total_time = time.time() - start_time
-        progress_callback(100, f"Dataset creation completed in {total_time:.2f} seconds")
+        progress_callback(100, f"Synthetic dataset created with {n_subjects} enrolled and {n_imposters} non-enrolled subjects.")
     
-    return dataset 
+    return dataset
