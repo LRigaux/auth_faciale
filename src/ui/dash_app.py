@@ -161,7 +161,7 @@ app.layout = dbc.Container([
     ]),
     
     # Interval pour mise à jour de la progression asynchrone
-    dcc.Interval(id='progress-interval', interval=500, n_intervals=0, disabled=False),
+    dcc.Interval(id='progress-interval', interval=1000, n_intervals=0, disabled=False),
     
     # Stockage client-side de certaines données légères
     dcc.Store(id='probe-info-store'),
@@ -201,8 +201,24 @@ def run_async(func, callback=None):
         global global_state
         global_state['is_processing'] = True
         
+        # Vider les files d'attente pour éviter des résultats résiduels
+        while not progress_queue.empty():
+            try:
+                progress_queue.get_nowait()
+            except queue.Empty:
+                break
+                
+        while not result_queue.empty():
+            try:
+                result_queue.get_nowait()
+            except queue.Empty:
+                break
+        
         def update_progress(percentage, message):
-            progress_queue.put((percentage, message))
+            try:
+                progress_queue.put((percentage, message), block=False)
+            except queue.Full:
+                pass
         
         def task_done():
             global global_state
@@ -213,13 +229,20 @@ def run_async(func, callback=None):
         def run_func():
             try:
                 result = func(*args, **kwargs, progress_callback=update_progress)
-                result_queue.put(("success", result))
+                try:
+                    result_queue.put(("success", result), block=False)
+                except queue.Full:
+                    pass
             except Exception as e:
-                result_queue.put(("error", str(e)))
+                print(f"Erreur dans la fonction asynchrone: {e}")
+                try:
+                    result_queue.put(("error", str(e)), block=False)
+                except queue.Full:
+                    pass
             finally:
                 task_done()
         
-        threading.Thread(target=run_func).start()
+        threading.Thread(target=run_func, daemon=True).start()
     
     return wrapper
 
@@ -272,6 +295,15 @@ def async_evaluate_performance(method, progress_callback=None):
     gallery_processed = global_state['gallery_processed']
     probes_processed = global_state['probes_processed']
     
+    # Vérifier si nous avons déjà calculé les résultats pour cette méthode
+    if 'last_evaluated_method' in global_state and global_state['last_evaluated_method'] == method:
+        if 'last_evaluation_results' in global_state:
+            results = global_state['last_evaluation_results']
+            # Si nous avons déjà les résultats complets, les retourner immédiatement
+            if 'metrics' in results and 'output' in results:
+                progress_callback(100, f"Résultats précédemment calculés pour {method}")
+                return results
+    
     progress_callback(10, f"Préparation pour l'évaluation de la méthode {method}...")
     
     # Séparer les probes en "enregistrés" et "non enregistrés"
@@ -315,28 +347,33 @@ def async_evaluate_performance(method, progress_callback=None):
         
         progress_callback(40, "Calcul des eigenfaces et du rayon optimal...")
         
-        # Trouver le meilleur rayon et entraîner le modèle
-        radius, eigenfaces_model = eigenfaces.find_best_radius(
-            gallery_flat,
-            enrolled_flat,
-            non_enrolled_flat
-        )
-        global_state['eigenfaces_model'] = eigenfaces_model
-        results['radius'] = radius
-        results['n_components'] = eigenfaces_model.n_components
-        
-        progress_callback(70, "Évaluation des performances...")
-        
-        # Évaluer les performances
-        metrics = evaluate_authentication_method(
-            lambda p, g, **kwargs: eigenfaces.authenticate(p, g, radius, eigenfaces_model),
-            gallery_flat,
-            probes_processed.reshape(probes_processed.shape[0], -1),
-            dataset.ground_truth
-        )
-        
-        results['metrics'] = metrics.to_dict()
-        results['output'] = f"Rayon optimal: {radius:.4f}\nNombre de composantes utilisées: {eigenfaces_model.n_components}\n\n{metrics}"
+        try:
+            # Trouver le meilleur rayon et entraîner le modèle
+            radius, eigenfaces_model = eigenfaces.find_best_radius(
+                gallery_flat,
+                enrolled_flat,
+                non_enrolled_flat
+            )
+            global_state['eigenfaces_model'] = eigenfaces_model
+            results['radius'] = radius
+            results['n_components'] = eigenfaces_model.n_components
+            
+            progress_callback(70, "Évaluation des performances...")
+            
+            # Évaluer les performances
+            metrics = evaluate_authentication_method(
+                lambda p, g, **kwargs: eigenfaces.authenticate(p, g, radius, eigenfaces_model),
+                gallery_flat,
+                probes_processed.reshape(probes_processed.shape[0], -1),
+                dataset.ground_truth
+            )
+            
+            results['metrics'] = metrics.to_dict()
+            results['output'] = f"Rayon optimal: {radius:.4f}\nNombre de composantes utilisées: {eigenfaces_model.n_components}\n\n{metrics}"
+        except Exception as e:
+            results['error'] = str(e)
+            results['output'] = f"Erreur lors de l'évaluation de la méthode Eigenfaces: {str(e)}"
+            print(f"Erreur pour eigenfaces: {e}")
         
     elif method == "cnn":
         progress_callback(50, "Initialisation du modèle CNN...")
@@ -560,29 +597,38 @@ def load_data(n_clicks, dataset_num):
     prevent_initial_call=True
 )
 def update_progress(n_intervals):
+    # Éviter les mises à jour inutiles
+    ctx = callback_context
+    if not ctx.triggered:
+        raise PreventUpdate
+    
     # Vérifier s'il y a une mise à jour de progression
     progress_value = 0
     progress_message = ""
+    progress_updated = False
     
     try:
-        while not progress_queue.empty():
+        if not progress_queue.empty():
             progress_value, progress_message = progress_queue.get_nowait()
+            progress_updated = True
     except queue.Empty:
         pass
     
     # Vérifier s'il y a un résultat
-    result_text = None
-    enable_evaluate = False
-    enable_select_image = False
-    enable_authenticate = True  # Par défaut désactivé
-    enable_viz_metrics = True   # Par défaut désactivé
-    enable_viz_eigenfaces = False
-    enable_viz_cnn = False
+    result_text = dash.no_update
+    enable_evaluate = global_state.get('dataset') is not None
+    enable_select_image = global_state.get('dataset') is not None
+    enable_authenticate = global_state.get('current_probe') is not None
+    enable_viz_metrics = 'last_evaluation_results' in global_state and 'metrics' in global_state['last_evaluation_results']
+    enable_viz_eigenfaces = global_state.get('eigenfaces_model') is not None
+    enable_viz_cnn = global_state.get('cnn_model') is not None
     evaluation_results = dash.no_update
+    result_updated = False
     
     try:
         if not result_queue.empty():
             status, result = result_queue.get_nowait()
+            result_updated = True
             
             if status == "success":
                 if 'output' in result:
@@ -591,7 +637,7 @@ def update_progress(n_intervals):
                     # Si c'est un résultat d'évaluation, stocker les métriques
                     if 'metrics' in result:
                         evaluation_results = result
-                        enable_viz_metrics = False  # On active la visualisation des métriques
+                        enable_viz_metrics = True
                 elif 'message' in result:
                     result_text = result['message']
                     if 'gallery_shape' in result and 'probes_shape' in result:
@@ -602,43 +648,20 @@ def update_progress(n_intervals):
                     method = result.get('method', 'inconnue')
                     authenticated = result.get('authenticated', False)
                     result_text = f"Résultat d'authentification ({method}):\nAccès {'autorisé' if authenticated else 'refusé'}"
-                
-                # Activer/désactiver les boutons en fonction de l'état
-                enable_evaluate = global_state.get('dataset') is not None
-                enable_select_image = global_state.get('dataset') is not None
-                enable_authenticate = global_state.get('current_probe') is not None
-                
-                # Activer les boutons de visualisation selon l'état
-                enable_viz_metrics = 'last_evaluation_results' in global_state and 'metrics' in global_state['last_evaluation_results']
-                enable_viz_eigenfaces = global_state.get('eigenfaces_model') is not None
-                enable_viz_cnn = global_state.get('cnn_model') is not None
             elif status == "error":
                 result_text = f"Erreur: {result}"
-                
-                # En cas d'erreur, on active quand même les boutons si possible
-                enable_evaluate = global_state.get('dataset') is not None
-                enable_select_image = global_state.get('dataset') is not None
-                enable_authenticate = global_state.get('current_probe') is not None
     except queue.Empty:
         pass
     
-    # Si l'application n'est pas en train de traiter et qu'il n'y a pas de nouveau résultat
-    if not global_state['is_processing'] and result_text is None and progress_value == 0:
-        # Vérifier l'état actuel pour décider quels boutons activer/désactiver
-        enable_evaluate = global_state.get('dataset') is not None
-        enable_select_image = global_state.get('dataset') is not None
-        enable_authenticate = global_state.get('current_probe') is not None
-        enable_viz_metrics = 'last_evaluation_results' in global_state and 'metrics' in global_state['last_evaluation_results']
-        enable_viz_eigenfaces = global_state.get('eigenfaces_model') is not None
-        enable_viz_cnn = global_state.get('cnn_model') is not None
-        
-        return dash.no_update, dash.no_update, dash.no_update, not enable_evaluate, not enable_select_image, not enable_authenticate, not enable_viz_metrics, not enable_viz_eigenfaces, not enable_viz_cnn, dash.no_update
+    # Si aucune mise à jour n'est nécessaire et que le traitement est terminé, ne rien faire
+    if not progress_updated and not result_updated and not global_state['is_processing']:
+        raise PreventUpdate
     
-    # Sinon, renvoyer les mises à jour
+    # Si nous sommes ici, c'est qu'il y a eu une mise à jour ou que le traitement est en cours
     return (
         progress_value,
         progress_message,
-        result_text if result_text is not None else dash.no_update,
+        result_text,
         not enable_evaluate,
         not enable_select_image,
         not enable_authenticate,
