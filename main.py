@@ -1,17 +1,14 @@
+#!/usr/bin/env python
 """
-Point d'entrée principal pour l'application d'authentification faciale.
+Script principal pour lancer l'application d'authentification faciale.
 
-Ce script initialise et lance l'application Dash.
+Pour exécuter l'application, lancez simplement:
+    python main.py
 """
 
-import os
-import sys
-
-# S'assurer que les modules du package sont importables
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
-
-# Importer et lancer l'application
 from src.ui.app import app
 
 if __name__ == "__main__":
+    print("Démarrage de l'application d'authentification faciale...")
+    print("Accédez à l'application sur http://127.0.0.1:8050/")
     app.run(debug=True, port=8050) 

@@ -1,378 +1,233 @@
 """
-Composants communs pour l'interface utilisateur.
+Common UI components for the facial authentication application.
 
-Ce module fournit des composants réutilisables pour créer l'interface utilisateur.
+This module provides reusable UI components shared across different
+parts of the application.
 """
 
 import dash
 from dash import html, dcc
 import dash_bootstrap_components as dbc
+import plotly.graph_objects as go
+import plotly.figure_factory as ff
+import numpy as np
+from typing import List, Dict, Any, Optional
 
-def create_navbar(app_title: str = "Authentification Faciale") -> dbc.Navbar:
+def create_header():
     """
-    Crée une barre de navigation.
+    Create the application header.
     
-    Args:
-        app_title (str): Titre de l'application
-        
     Returns:
-        dbc.Navbar: Composant barre de navigation
+        dbc.Navbar: Bootstrap navbar component
     """
     return dbc.Navbar(
-        dbc.Container(
-            [
-                dbc.NavbarBrand(app_title, className="ms-2"),
-                dbc.Nav(
-                    [
-                        dbc.NavItem(dbc.NavLink("Accueil", href="/")),
-                        dbc.NavItem(dbc.NavLink("Force Brute", href="/brute-force")),
-                        dbc.NavItem(dbc.NavLink("Eigenfaces", href="/eigenfaces")),
-                        dbc.NavItem(dbc.NavLink("CNN", href="/cnn")),
-                        dbc.NavItem(dbc.NavLink("Comparaison", href="/compare"))
-                    ],
-                    className="ms-auto",
-                    navbar=True
-                ),
-            ]
-        ),
+        dbc.Container([
+            dbc.NavbarBrand("Facial Authentication System", className="ms-2"),
+            dbc.Nav([
+                dbc.NavItem(dbc.NavLink("Home", href="#home", id="nav-home")),
+                dbc.NavItem(dbc.NavLink("Brute Force", href="#brute-force", id="nav-brute-force")),
+                dbc.NavItem(dbc.NavLink("Eigenfaces", href="#eigenfaces", id="nav-eigenfaces")),
+                dbc.NavItem(dbc.NavLink("Comparison", href="#comparison", id="nav-comparison")),
+            ], className="ms-auto", navbar=True),
+        ]),
         color="primary",
         dark=True,
         className="mb-4"
     )
 
-def create_footer() -> html.Footer:
+def create_footer():
     """
-    Crée un pied de page.
+    Create the application footer.
     
     Returns:
-        html.Footer: Composant pied de page
+        dbc.Container: Bootstrap container for the footer
     """
-    return html.Footer(
-        dbc.Container(
-            [
-                html.Hr(),
-                html.P(
-                    "Système d'authentification faciale © 2025",
-                    className="text-center text-muted"
-                )
-            ]
-        ),
-        className="mt-4"
-    )
+    return dbc.Container([
+        html.Hr(),
+        html.P(
+            ["Facial Authentication System - Created with ", 
+            html.A("Dash", href="https://dash.plotly.com/", target="_blank"),
+            " - 2023"],
+            className="text-center text-muted"
+        )
+    ], fluid=True, className="mt-4")
 
-def create_card(title: str, children=None, className: str = "mb-4") -> dbc.Card:
+def create_card(title: str, children: List[dash.development.base_component.Component], 
+               id: Optional[str] = None, collapsed: bool = False):
     """
-    Crée une carte avec un titre et un contenu.
+    Create a Bootstrap card with optional collapse functionality.
     
     Args:
-        title (str): Titre de la carte
-        children: Contenu de la carte
-        className (str): Classes CSS additionnelles
+        title: Card title
+        children: Card content components
+        id: Component ID (optional)
+        collapsed: Whether the card should be initially collapsed
         
     Returns:
-        dbc.Card: Composant carte
+        dbc.Card: Bootstrap card component
     """
-    return dbc.Card(
-        [
-            dbc.CardHeader(title),
-            dbc.CardBody(children or [])
-        ],
-        className=className
-    )
-
-def create_progress_card() -> dbc.Card:
-    """
-    Crée une carte avec une barre de progression.
-    
-    Returns:
-        dbc.Card: Composant carte avec barre de progression
-    """
-    return create_card(
-        "Progression",
-        [
-            dbc.Progress(id="progress-bar", value=0, style={"height": "20px", "marginBottom": "10px"}),
-            html.P(id="progress-text", children="")
-        ]
-    )
-
-def create_dataset_selector() -> dbc.Card:
-    """
-    Crée une carte avec un sélecteur de dataset.
-    
-    Returns:
-        dbc.Card: Composant carte avec sélecteur de dataset
-    """
-    return create_card(
-        "Configuration",
-        [
-            html.Div([
-                html.Label("Dataset:"),
-                dbc.RadioItems(
-                    id="dataset-select",
-                    options=[
-                        {"label": "Dataset 1", "value": 1},
-                        {"label": "Dataset 2", "value": 2}
-                    ],
-                    value=1,
-                    inline=True
-                )
-            ], className="mb-3"),
-            dbc.Button("Charger les données", id="load-data-btn", color="primary")
-        ]
-    )
-
-def create_method_selector() -> dbc.Card:
-    """
-    Crée une carte avec un sélecteur de méthode.
-    
-    Returns:
-        dbc.Card: Composant carte avec sélecteur de méthode
-    """
-    return create_card(
-        "Méthode",
-        [
-            html.Div([
-                html.Label("Méthode:"),
-                dbc.RadioItems(
-                    id="method-select",
-                    options=[
-                        {"label": "Force Brute", "value": "brute_force"},
-                        {"label": "Eigenfaces", "value": "eigenfaces"},
-                        {"label": "CNN", "value": "cnn"}
-                    ],
-                    value="brute_force",
-                    inline=True
-                )
-            ], className="mb-3"),
-            dbc.Button("Évaluer les performances", id="evaluate-btn", color="success", disabled=True)
-        ]
-    )
-
-def create_authentication_test_card() -> dbc.Card:
-    """
-    Crée une carte pour tester l'authentification.
-    
-    Returns:
-        dbc.Card: Composant carte pour le test d'authentification
-    """
-    return create_card(
-        "Test d'authentification",
-        [
-            html.Div([
-                html.Img(id="probe-image", style={
-                    "width": "150px", 
-                    "height": "150px", 
-                    "marginBottom": "10px",
-                    "border": "1px solid #ddd"
-                }),
-                html.Div([
-                    dbc.Button("Sélectionner une image", id="select-image-btn", color="info", 
-                              className="me-2", disabled=True),
-                    dbc.Button("Authentifier", id="authenticate-btn", color="danger", disabled=True)
-                ], style={"marginTop": "10px"})
-            ], style={"textAlign": "center"})
-        ]
-    )
-
-def create_results_card() -> dbc.Card:
-    """
-    Crée une carte pour afficher les résultats.
-    
-    Returns:
-        dbc.Card: Composant carte pour les résultats
-    """
-    return create_card(
-        "Résultats",
-        [
-            html.Pre(id="result-text", style={
-                "whiteSpace": "pre-wrap", 
-                "wordBreak": "break-all",
-                "maxHeight": "200px",
-                "overflowY": "auto"
-            })
-        ]
-    )
-
-def create_evaluation_results_card() -> dbc.Card:
-    """
-    Crée une carte pour afficher les résultats d'évaluation.
-    
-    Returns:
-        dbc.Card: Composant carte pour les résultats d'évaluation
-    """
-    return create_card(
-        "Résultats d'évaluation",
-        [
-            html.Pre(id="evaluation-result-text", style={
-                "whiteSpace": "pre-wrap", 
-                "wordBreak": "break-all",
-                "maxHeight": "200px",
-                "overflowY": "auto"
-            })
-        ]
-    )
-
-def create_authentication_results_card() -> dbc.Card:
-    """
-    Crée une carte pour afficher les résultats d'authentification.
-    
-    Returns:
-        dbc.Card: Composant carte pour les résultats d'authentification
-    """
-    return create_card(
-        "Résultat du test d'authentification",
-        [
-            html.Pre(id="authentication-result-text", style={
-                "whiteSpace": "pre-wrap", 
-                "wordBreak": "break-all",
-                "maxHeight": "200px",
-                "overflowY": "auto"
-            })
-        ]
-    )
-
-def create_visualization_card() -> dbc.Card:
-    """
-    Crée une carte pour la visualisation.
-    
-    Returns:
-        dbc.Card: Composant carte pour la visualisation
-    """
-    return create_card(
-        "Visualisation",
-        [
-            dbc.ButtonGroup([
-                dbc.Button("Visualiser les métriques", id="viz-metrics-btn", 
-                          color="secondary", className="me-2", disabled=True),
-                dbc.Button("Visualiser les Eigenfaces", id="viz-eigenfaces-btn", 
-                          color="secondary", className="me-2", disabled=True),
-                dbc.Button("Visualiser la matrice de confusion", id="viz-confmat-btn", 
-                          color="secondary", disabled=True)
-            ]),
-            html.Div(id="visualization-container", className="mt-3")
-        ]
-    )
-
-def create_modal(id_base: str, title: str = "Information") -> dbc.Modal:
-    """
-    Crée une boîte de dialogue modale.
-    
-    Args:
-        id_base (str): Préfixe d'identifiant pour la modale
-        title (str): Titre de la modale
+    card_props = {"className": "mb-3"}
+    if id:
+        card_props["id"] = id
         
-    Returns:
-        dbc.Modal: Composant modale
-    """
-    return dbc.Modal(
-        [
-            dbc.ModalHeader(title),
-            dbc.ModalBody(id=f"{id_base}-body"),
-            dbc.ModalFooter(
-                dbc.Button("Fermer", id=f"close-{id_base}", className="ms-auto", n_clicks=0)
+    if collapsed:
+        return dbc.Card([
+            dbc.CardHeader(
+                dbc.Button(
+                    title,
+                    color="link",
+                    id=f"{id}-header" if id else None,
+                    className="text-decoration-none d-block text-left p-0"
+                )
             ),
-        ],
-        id=f"{id_base}-modal",
-        is_open=False,
-    )
+            dbc.Collapse(
+                dbc.CardBody(children),
+                id=f"{id}-collapse" if id else None,
+                is_open=not collapsed
+            )
+        ], **card_props)
+    else:
+        return dbc.Card([
+            dbc.CardHeader(title),
+            dbc.CardBody(children)
+        ], **card_props)
 
-def create_graph_display() -> html.Div:
+def create_progress_bar(id: str, label: Optional[str] = None):
     """
-    Crée un conteneur pour afficher un graphique.
+    Create a progress bar with optional label.
     
+    Args:
+        id: Component ID
+        label: Progress bar label (optional)
+        
     Returns:
-        html.Div: Conteneur pour graphique
+        dbc.Progress: Bootstrap progress component
     """
     return html.Div([
-        dcc.Graph(id="visualization-graph")
+        html.P(label or "", id=f"{id}-label", className="mb-1"),
+        dbc.Progress(id=id, value=0, striped=True, animated=True, className="mb-3")
     ])
 
-def create_image_display(image_id: str, caption_id: str = None, width: str = "100%") -> html.Div:
+def create_image_display(id: str, height: str = "200px", width: str = "200px"):
     """
-    Crée un conteneur pour afficher une image.
+    Create an image display component.
     
     Args:
-        image_id (str): Identifiant de l'image
-        caption_id (str): Identifiant de la légende (optionnel)
-        width (str): Largeur de l'image
+        id: Component ID
+        height: Image height
+        width: Image width
         
     Returns:
-        html.Div: Conteneur pour image
+        html.Div: Div containing the image
     """
-    children = [html.Img(id=image_id, style={"width": width})]
-    
-    if caption_id:
-        children.append(html.P(id=caption_id, className="text-center"))
-        
-    return html.Div(children, className="text-center")
+    return html.Div([
+        html.Img(
+            id=id,
+            src="",
+            style={
+                "height": height,
+                "width": width,
+                "objectFit": "contain",
+                "border": "1px solid #ddd",
+                "borderRadius": "4px",
+                "padding": "5px"
+            },
+            className="mx-auto d-block"
+        )
+    ], className="text-center")
 
-def create_info_row(title: str, value_id: str) -> dbc.Row:
+def create_confusion_matrix_display(id: str, animate: bool = True):
     """
-    Crée une ligne d'information avec un titre et une valeur.
+    Create a confusion matrix display component.
     
     Args:
-        title (str): Titre de l'information
-        value_id (str): Identifiant de l'élément contenant la valeur
+        id: Component ID
+        animate: Whether to animate the confusion matrix
         
     Returns:
-        dbc.Row: Ligne d'information
+        dcc.Graph: Plotly graph component for the confusion matrix
     """
-    return dbc.Row([
-        dbc.Col(html.Strong(f"{title}:"), width=4),
-        dbc.Col(html.Span(id=value_id), width=8)
-    ], className="mb-2")
-
-def create_timing_card() -> dbc.Card:
-    """
-    Crée une carte pour afficher les temps d'exécution.
-    
-    Returns:
-        dbc.Card: Composant carte pour les temps d'exécution
-    """
-    return create_card(
-        "Temps d'exécution",
-        [
-            create_info_row("Chargement des données", "loading-time"),
-            create_info_row("Prétraitement", "preprocessing-time"),
-            create_info_row("Évaluation des performances", "evaluation-time"),
-            create_info_row("Authentification", "authentication-time")
-        ]
+    return dcc.Graph(
+        id=id,
+        config={'displayModeBar': False},
+        figure=create_empty_confusion_matrix()
     )
 
-def create_tab_layout(tabs_content: list) -> html.Div:
+def create_empty_confusion_matrix():
     """
-    Crée une mise en page à onglets.
+    Create an empty confusion matrix figure.
     
-    Args:
-        tabs_content (list): Liste de tuples (label, content) pour chaque onglet
-        
     Returns:
-        html.Div: Mise en page à onglets
+        go.Figure: Empty confusion matrix figure
     """
-    tabs = []
-    contents = []
-    
-    for i, (label, content) in enumerate(tabs_content):
-        tab_id = f"tab-{i}"
-        tabs.append(dbc.Tab(label=label, tab_id=tab_id))
-        contents.append(html.Div(content, id=f"content-{tab_id}", style={"display": "none"}))
-    
-    return html.Div([
-        dbc.Tabs(tabs, id="tabs", active_tab="tab-0"),
-        html.Div(contents, id="tabs-content", className="mt-3")
-    ])
+    return go.Figure(
+        data=go.Heatmap(
+            z=[[0, 0], [0, 0]],
+            x=['Not Authenticated', 'Authenticated'],
+            y=['Non-enrolled', 'Enrolled'],
+            colorscale='Blues',
+            showscale=False,
+            text=[['TN: 0 (0%)', 'FP: 0 (0%)'], ['FN: 0 (0%)', 'TP: 0 (0%)']],
+            texttemplate="%{text}",
+            textfont={"size": 16}
+        ),
+        layout=go.Layout(
+            title='Confusion Matrix',
+            xaxis=dict(title='Predicted'),
+            yaxis=dict(title='Actual', autorange='reversed'),
+            margin=dict(l=60, r=30, t=60, b=60),
+            height=400
+        )
+    )
 
-def create_figure_display(figure_id: str) -> html.Div:
+def create_confusion_matrix_figure(confusion_matrix: List[List[int]]):
     """
-    Crée un conteneur pour afficher une figure enregistrée.
+    Create a confusion matrix figure from matrix data.
     
     Args:
-        figure_id (str): Identifiant de la figure
+        confusion_matrix: 2x2 confusion matrix
         
     Returns:
-        html.Div: Conteneur pour figure
+        go.Figure: Confusion matrix figure
     """
-    return html.Div([
-        html.Img(id=figure_id, style={"width": "100%"}),
-        dbc.Button("Actualiser", id=f"refresh-{figure_id}", color="link", className="mt-2")
-    ], className="text-center") 
+    # Convert to numpy array
+    cm = np.array(confusion_matrix)
+    
+    # Calculate percentages
+    total = np.sum(cm)
+    if total > 0:
+        percentages = cm / total * 100
+    else:
+        percentages = np.zeros_like(cm)
+    
+    # Create text annotations with counts and percentages
+    tn, fp = cm[0, 0], cm[0, 1]
+    fn, tp = cm[1, 0], cm[1, 1]
+    
+    tn_pct, fp_pct = percentages[0, 0], percentages[0, 1]
+    fn_pct, tp_pct = percentages[1, 0], percentages[1, 1]
+    
+    annotations = [
+        [f'TN: {tn} ({tn_pct:.1f}%)', f'FP: {fp} ({fp_pct:.1f}%)'],
+        [f'FN: {fn} ({fn_pct:.1f}%)', f'TP: {tp} ({tp_pct:.1f}%)']
+    ]
+    
+    return go.Figure(
+        data=go.Heatmap(
+            z=cm,
+            x=['Not Authenticated', 'Authenticated'],
+            y=['Non-enrolled', 'Enrolled'],
+            colorscale='Blues',
+            showscale=False,
+            text=annotations,
+            texttemplate="%{text}",
+            textfont={"size": 16}
+        ),
+        layout=go.Layout(
+            title='Confusion Matrix',
+            xaxis=dict(title='Predicted'),
+            yaxis=dict(title='Actual', autorange='reversed'),
+            margin=dict(l=60, r=30, t=60, b=60),
+            height=400
+        )
+    ) 

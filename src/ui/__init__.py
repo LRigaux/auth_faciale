@@ -1,5 +1,13 @@
 """
-Package d'interface utilisateur pour le système d'authentification faciale.
+User interface module for facial authentication.
+
+This package contains the implementation of the user interface:
+- Main application
+- Components
+- Layouts
+- Callbacks
 """
 
-__all__ = [] 
+from .app import app
+
+__all__ = ['app'] 
