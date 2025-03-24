@@ -1,30 +1,17 @@
 """
-Script principal pour le système d'authentification faciale.
+Point d'entrée principal pour l'application d'authentification faciale.
 
-Ce script lance l'application d'authentification faciale basée sur Dash.
+Ce script initialise et lance l'application Dash.
 """
 
-import sys
 import os
-import traceback
+import sys
 
-def main():
-    """
-    Fonction principale qui exécute l'application Dash.
-    """
-    try:
-        print("Démarrage du système d'authentification faciale...")
-        
-        # Import différé pour éviter les problèmes d'initialisation précoce
-        from src.ui.dash_app import app
-        
-        print("Interface accessible à l'adresse: http://127.0.0.1:8050")
-        app.run(debug=True, use_reloader=False)
-    except Exception as e:
-        print(f"Erreur lors du démarrage de l'application: {e}")
-        traceback.print_exc()
-        return 1
-    return 0
+# S'assurer que les modules du package sont importables
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+
+# Importer et lancer l'application
+from src.ui.app import app
 
 if __name__ == "__main__":
-    sys.exit(main()) 
+    app.run(debug=True, port=8050) 
