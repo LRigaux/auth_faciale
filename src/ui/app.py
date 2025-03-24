@@ -15,12 +15,12 @@ from tkinter import ttk, filedialog, messagebox
 from PIL import Image, ImageTk
 
 # Ajouter le répertoire parent au chemin de recherche pour les imports
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
-from utils import load_dataset, evaluate_authentication_method, compare_methods
-import brute_force
-import eigenfaces
-import deep_learning
+from src.utils import load_dataset, evaluate_authentication_method, compare_methods
+import src.brute_force as brute_force
+import src.eigenfaces as eigenfaces
+import src.deep_learning as deep_learning
 
 
 class FaceAuthenticationApp:
@@ -47,6 +47,7 @@ class FaceAuthenticationApp:
         self.probes_processed = None
         self.eigenfaces_model = None
         self.cnn_model = None
+        self.current_probe = None
         
         # Création de l'interface
         self._create_widgets()
@@ -245,7 +246,7 @@ class FaceAuthenticationApp:
     
     def _authenticate(self):
         """Authentifie l'image sélectionnée."""
-        if self.current_probe is None:
+        if not hasattr(self, 'current_probe') or self.current_probe is None:
             messagebox.showwarning("Attention", "Veuillez d'abord sélectionner une image.")
             return
         

@@ -9,7 +9,7 @@ la dimensionnalité des images avant la comparaison.
 import numpy as np
 from typing import List, Tuple, Optional
 import matplotlib.pyplot as plt
-from ..brute_force.authentication import radius_search
+from src.brute_force.authentication import radius_search
 
 
 class EigenfacesModel:
