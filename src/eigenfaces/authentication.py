@@ -295,6 +295,52 @@ class EigenfacesModel:
         plt.tight_layout()
         return fig
 
+    def compute_min_distance(self, probe: np.ndarray) -> float:
+        """
+        Calcule la distance minimale entre une probe et la galerie.
+        
+        Args:
+            probe: Image de test à authentifier
+            
+        Returns:
+            float: Distance minimale
+        """
+        if not hasattr(self, 'gallery_projections') or self.gallery_projections is None:
+            raise ValueError("Le modèle doit d'abord être entraîné avec fit()")
+        
+        # Projeter la probe dans l'espace des eigenfaces
+        probe_flat = probe.flatten() if probe.ndim > 1 else probe
+        probe_projection = self.project(probe_flat.reshape(1, -1))[0]
+        
+        # Calculer les distances
+        distances = np.sqrt(np.sum((self.gallery_projections - probe_projection) ** 2, axis=1))
+        
+        # Retourner la distance minimale
+        return np.min(distances)
+
+    def find_closest_match(self, probe: np.ndarray) -> int:
+        """
+        Trouve l'indice de l'image de la galerie la plus proche de la probe.
+        
+        Args:
+            probe: Image de test
+            
+        Returns:
+            int: Indice dans la galerie de l'image la plus proche
+        """
+        if not hasattr(self, 'gallery_projections') or self.gallery_projections is None:
+            raise ValueError("Le modèle doit d'abord être entraîné avec fit()")
+        
+        # Projeter la probe dans l'espace des eigenfaces
+        probe_flat = probe.flatten() if probe.ndim > 1 else probe
+        probe_projection = self.project(probe_flat.reshape(1, -1))[0]
+        
+        # Calculer les distances
+        distances = np.sqrt(np.sum((self.gallery_projections - probe_projection) ** 2, axis=1))
+        
+        # Retourner l'indice de la distance minimale
+        return np.argmin(distances)
+
 
 def evaluate_performance(model: EigenfacesModel, enrolled_probes: np.ndarray, 
                         non_enrolled_probes: np.ndarray, radius: float, 

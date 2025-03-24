@@ -18,11 +18,13 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(
 # Import des composants et pages
 from src.ui.pages.home_page import create_layout as create_home_layout
 from src.ui.pages.eigenfaces_page import create_layout as create_eigenfaces_layout
+from src.ui.pages.brute_force_page import create_layout as create_brute_force_layout
 from src.ui.utils.async_utils import clear_queues
 
 # Créer les répertoires nécessaires s'ils n'existent pas
 os.makedirs('assets/img', exist_ok=True)
 os.makedirs('figures/eigenfaces', exist_ok=True)
+os.makedirs('figures/brute_force', exist_ok=True)
 
 # Initialisations
 app = dash.Dash(
@@ -43,6 +45,7 @@ app.layout = html.Div([
             dbc.Nav([
                 dbc.NavItem(dbc.NavLink("Accueil", href="/")),
                 dbc.NavItem(dbc.NavLink("Eigenfaces", href="/eigenfaces")),
+                dbc.NavItem(dbc.NavLink("Force Brute", href="/brute-force")),
                 dbc.NavItem(dbc.NavLink("Documentation", href="/documentation", disabled=True)),
             ]),
         ], fluid=True),
@@ -79,14 +82,11 @@ def display_page(pathname):
     # Rediriger vers la page appropriée
     if pathname == "/eigenfaces":
         return create_eigenfaces_layout()
+    elif pathname == "/brute-force":
+        return create_brute_force_layout()
     elif pathname == "/deep-learning":
         return html.Div([
             html.H1("Deep Learning - En développement", className="text-center mt-5"),
-            dbc.Button("Retour à l'accueil", href="/", color="primary", className="mt-3 d-block mx-auto")
-        ])
-    elif pathname == "/brute-force":
-        return html.Div([
-            html.H1("Brute Force - En développement", className="text-center mt-5"),
             dbc.Button("Retour à l'accueil", href="/", color="primary", className="mt-3 d-block mx-auto")
         ])
     elif pathname == "/documentation":

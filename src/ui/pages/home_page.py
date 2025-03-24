@@ -73,7 +73,7 @@ def create_layout():
                                     "Méthode de base comparant directement les pixels ",
                                     "des images sans réduction de dimensionnalité."
                                 ], className="card-text"),
-                                dbc.Button("Explorer", color="primary", href="/brute-force", className="mt-2", disabled=True)
+                                dbc.Button("Explorer", color="primary", href="/brute-force", className="mt-2")
                             ])
                         ], className="h-100")
                     ], width=4)

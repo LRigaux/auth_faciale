@@ -1,7 +1,7 @@
 """
-Page spécifique pour la méthode Eigenfaces.
+Page spécifique pour la méthode Force Brute.
 
-Ce module fournit la mise en page et les callbacks pour la page Eigenfaces.
+Ce module fournit la mise en page et les callbacks pour la page Force Brute.
 """
 
 import dash
@@ -21,7 +21,7 @@ from src.ui.components.common import (
 )
 from src.ui.utils.auth_functions import (
     fig_to_base64, ensure_directory, generate_performance_summary,
-    format_duration
+    format_duration, array_to_base64
 )
 from src.ui.utils.async_utils import (
     run_async, update_global_state, get_global_state,
@@ -29,12 +29,12 @@ from src.ui.utils.async_utils import (
 )
 
 # Préfixe pour les identifiants des composants
-PREFIX = "eigenfaces"
+PREFIX = "brute-force"
 
 # Structure de la page
 def create_layout():
     """
-    Crée la mise en page de la page Eigenfaces.
+    Crée la mise en page de la page Force Brute.
     
     Returns:
         dbc.Container: Mise en page de la page
@@ -42,10 +42,10 @@ def create_layout():
     return dbc.Container([
         dbc.Row([
             dbc.Col([
-                html.H1("Méthode Eigenfaces", className="mb-4"),
+                html.H1("Méthode Force Brute", className="mb-4"),
                 html.P([
-                    "Cette méthode utilise l'Analyse en Composantes Principales (PCA) pour ",
-                    "réduire la dimensionnalité des images avant de réaliser l'authentification."
+                    "Cette méthode compare directement l'image de test avec toutes les images ",
+                    "de la galerie en calculant une distance entre les vecteurs de pixels."
                 ], className="lead mb-4")
             ], width=12)
         ]),
@@ -53,7 +53,7 @@ def create_layout():
         dbc.Row([
             dbc.Col([
                 create_dataset_selector(),
-                create_eigenfaces_params_card(),
+                create_brute_force_params_card(),
                 create_timing_card(),
             ], width=4),
             
@@ -80,45 +80,17 @@ def create_layout():
                 dbc.Tabs([
                     dbc.Tab([
                         html.Div([
-                            html.P("Les eigenfaces sont les vecteurs propres de la matrice de covariance des images, qui représentent les directions de plus grande variance dans l'espace des visages."),
-                            create_figure_display(f"{PREFIX}-eigenfaces-fig")
-                        ], className="mt-3")
-                    ], label="Eigenfaces"),
-                    
-                    dbc.Tab([
-                        html.Div([
-                            html.P("Cette visualisation montre la variance expliquée par chaque composante principale et la variance cumulée."),
-                            create_figure_display(f"{PREFIX}-variance-fig")
-                        ], className="mt-3")
-                    ], label="Variance Expliquée"),
-                    
-                    dbc.Tab([
-                        html.Div([
                             html.P("Cette visualisation montre la distribution des distances pour les utilisateurs enregistrés et non enregistrés."),
-                            create_figure_display(f"{PREFIX}-distances-fig")
+                            html.Div(id=f"{PREFIX}-distances-container", className="mt-3")
                         ], className="mt-3")
                     ], label="Distribution des Distances"),
                     
                     dbc.Tab([
                         html.Div([
                             html.P("Cette visualisation montre la matrice de confusion pour les résultats de l'authentification."),
-                            create_figure_display(f"{PREFIX}-confmat-fig")
+                            html.Div(id=f"{PREFIX}-confmat-container", className="mt-3")
                         ], className="mt-3")
                     ], label="Matrice de Confusion"),
-                    
-                    dbc.Tab([
-                        html.Div([
-                            html.P("Cette visualisation montre les performances pour différentes valeurs de rayon."),
-                            create_figure_display(f"{PREFIX}-radius-perf-fig")
-                        ], className="mt-3")
-                    ], label="Performances / Rayon"),
-                    
-                    dbc.Tab([
-                        html.Div([
-                            html.P("Cette visualisation montre la qualité de reconstruction des images originales."),
-                            create_figure_display(f"{PREFIX}-reconstruction-fig")
-                        ], className="mt-3")
-                    ], label="Reconstruction"),
                     
                     dbc.Tab([
                         html.Div([
@@ -137,51 +109,39 @@ def create_layout():
         # Interval pour les mises à jour
         dcc.Interval(id=f"{PREFIX}-progress-interval", interval=1000),
         
-        # Modal
-        create_modal(f"{PREFIX}-info", "Information Eigenfaces")
+        # Modal pour afficher des informations supplémentaires
+        create_modal(f"{PREFIX}-info", "Information Force Brute")
     ], fluid=True)
 
-def create_eigenfaces_params_card():
+def create_brute_force_params_card():
     """
-    Crée une carte avec les paramètres spécifiques à la méthode Eigenfaces.
+    Crée une carte avec les paramètres spécifiques à la méthode Force Brute.
     
     Returns:
         dbc.Card: Composant carte avec les paramètres
     """
     return create_card(
-        "Paramètres Eigenfaces",
+        "Paramètres Force Brute",
         [
             html.Div([
-                html.Label("Nombre de composantes:"),
-                dcc.Input(
-                    id=f"{PREFIX}-n-components",
-                    type="number",
-                    min=1,
-                    max=300,
-                    step=1,
-                    value=100,
-                    className="form-control"
-                ),
-                html.Small("Laissez vide pour déterminer automatiquement", className="text-muted")
-            ], className="mb-3"),
-            
-            html.Div([
-                html.Label("Seuil de variance expliquée:"),
-                dcc.Slider(
-                    id=f"{PREFIX}-variance-threshold",
-                    min=0.7,
-                    max=0.99,
-                    step=0.01,
-                    value=0.95,
-                    marks={0.7: '70%', 0.8: '80%', 0.9: '90%', 0.95: '95%', 0.99: '99%'}
-                ),
+                html.Label("Norme de distance:"),
+                dbc.RadioItems(
+                    id=f"{PREFIX}-norm",
+                    options=[
+                        {"label": "L1 (Manhattan)", "value": "L1"},
+                        {"label": "L2 (Euclidienne)", "value": "L2"},
+                        {"label": "Inf (Chebyshev)", "value": "inf"}
+                    ],
+                    value="L2",
+                    inline=True
+                )
             ], className="mb-3"),
             
             dbc.Button("Évaluer", id=f"{PREFIX}-evaluate-btn", color="success", disabled=True)
         ]
     )
 
-# Callbacks spécifiques à la page Eigenfaces
+# Callbacks spécifiques à la page Force Brute
 @callback(
     [
         Output(f"{PREFIX}-evaluate-btn", "disabled"),
@@ -201,7 +161,6 @@ def on_load_data(n_clicks, dataset_num):
     
     # Lancer le chargement des données de façon asynchrone
     from src.ui.utils.auth_functions import load_dataset_with_timing
-    from src.ui.utils.async_utils import run_async
     
     @run_async
     def async_load_data(dataset_num, progress_callback=None):
@@ -224,7 +183,7 @@ def on_load_data(n_clicks, dataset_num):
     [Input(f"{PREFIX}-progress-interval", "n_intervals")],
     prevent_initial_call=True
 )
-def update_progress_eigenfaces(n_intervals):
+def update_progress_brute_force(n_intervals):
     """
     Callback pour la mise à jour de la progression.
     """
@@ -277,29 +236,24 @@ def update_progress_eigenfaces(n_intervals):
         Output("evaluation-time", "children")
     ],
     [Input(f"{PREFIX}-evaluate-btn", "n_clicks")],
-    [
-        State(f"{PREFIX}-n-components", "value"),
-        State(f"{PREFIX}-variance-threshold", "value")
-    ],
+    [State(f"{PREFIX}-norm", "value")],
     prevent_initial_call=True
 )
-def on_evaluate_eigenfaces(n_clicks, n_components, variance_threshold):
+def on_evaluate_brute_force(n_clicks, norm):
     """
-    Callback pour l'évaluation des performances de la méthode Eigenfaces.
+    Callback pour l'évaluation des performances de la méthode Force Brute.
     """
     if not n_clicks:
         return dash.no_update, dash.no_update, dash.no_update
     
-    # Seuil de variance expliquée par défaut
-    if variance_threshold is None:
-        variance_threshold = 0.95
-    
     @run_async
-    def async_evaluate_eigenfaces(n_components, variance_threshold, progress_callback=None):
+    def async_evaluate_brute_force(norm, progress_callback=None):
         """
-        Évaluation asynchrone des performances de la méthode Eigenfaces.
+        Évaluation asynchrone des performances de la méthode Force Brute.
         """
-        import src.eigenfaces.authentication as eigenfaces
+        import src.brute_force.authentication as brute_force
+        import matplotlib.pyplot as plt
+        import seaborn as sns
         from src.ui.utils.async_utils import get_global_state
         
         # Récupérer les données
@@ -310,10 +264,6 @@ def on_evaluate_eigenfaces(n_clicks, n_components, variance_threshold):
         if dataset is None or gallery_processed is None or probes_processed is None:
             return {'error': "Veuillez d'abord charger les données"}
         
-        # Convertir n_components en None si vide
-        if n_components == "" or n_components <= 0:
-            n_components = None
-            
         progress_callback(5, "Préparation des données pour l'évaluation...")
         
         # Séparer les probes en "enregistrés" et "non enregistrés"
@@ -323,98 +273,158 @@ def on_evaluate_eigenfaces(n_clicks, n_components, variance_threshold):
         enrolled_probes = probes_processed[enrolled_indices]
         non_enrolled_probes = probes_processed[non_enrolled_indices]
         
-        progress_callback(10, "Recherche du rayon optimal et évaluation...")
+        progress_callback(10, "Recherche du rayon optimal...")
         
-        # Créer le dossier pour enregistrer les figures
-        figures_dir = ensure_directory("figures/eigenfaces")
+        start_time = time.time()
         
-        # Trouver le meilleur rayon et évaluer les performances
-        radius, model, results = eigenfaces.find_best_radius(
-            gallery_processed, 
-            enrolled_probes, 
-            non_enrolled_probes,
-            n_components,
-            progress_callback
-        )
+        # Aplatir les images pour le calcul des distances
+        gallery_flat = gallery_processed.reshape(gallery_processed.shape[0], -1)
+        enrolled_flat = enrolled_probes.reshape(enrolled_probes.shape[0], -1)
+        non_enrolled_flat = non_enrolled_probes.reshape(non_enrolled_probes.shape[0], -1)
         
-        # Ajouter des informations sur le modèle
-        results['model_info'] = {
-            'n_components': model.n_components,
-            'variance_explained': np.sum(model.pca.explained_variance_ratio_)
-        }
+        # Calculer les distances minimales pour chaque probe
+        progress_callback(20, "Calcul des distances pour les utilisateurs enregistrés...")
         
-        # Stocker dans l'état global
-        update_global_state('eigenfaces_model', model)
-        update_global_state('last_evaluation_results', results)
-        update_global_state('last_evaluated_method', 'eigenfaces')
+        enrolled_min_distances = []
+        enrolled_closest_ids = []
         
-        progress_callback(80, "Génération des visualisations...")
-        
-        # Générer et enregistrer les figures
-        if hasattr(model, 'pca') and model.pca is not None:
+        for i, probe in enumerate(enrolled_flat):
+            distances = brute_force.compute_distances(gallery_flat, probe, norm)
+            min_idx = np.argmin(distances)
+            enrolled_min_distances.append(distances[min_idx])
+            enrolled_closest_ids.append(dataset.gallery_ids[min_idx])
             
-            # Visualisation des eigenfaces
-            try:
-                img_shape = (int(np.sqrt(gallery_processed.shape[1])), int(np.sqrt(gallery_processed.shape[1])))
-                fig_eigenfaces = model.visualize_eigenfaces(img_shape, n_eigenfaces=8)
-                register_figure(f"{PREFIX}-eigenfaces-fig", fig_to_base64(fig_eigenfaces))
-            except Exception as e:
-                print(f"Erreur lors de la visualisation des eigenfaces: {e}")
-            
-            # Visualisation de la variance expliquée
-            try:
-                fig_variance = model.visualize_variance()
-                register_figure(f"{PREFIX}-variance-fig", fig_to_base64(fig_variance))
-            except Exception as e:
-                print(f"Erreur lors de la visualisation de la variance: {e}")
-            
-            # Visualisation de la qualité de reconstruction
-            try:
-                fig_reconstruction = model.get_reconstruction_quality(gallery_processed[:5])
-                register_figure(f"{PREFIX}-reconstruction-fig", fig_to_base64(fig_reconstruction))
-            except Exception as e:
-                print(f"Erreur lors de la visualisation de la reconstruction: {e}")
+            if progress_callback and i % 10 == 0:
+                progress_pct = 20 + (i / len(enrolled_flat)) * 30
+                progress_callback(int(progress_pct), f"Traitement de la probe {i+1}/{len(enrolled_flat)}...")
         
-        # Visualisation des performances en fonction du rayon
-        try:
-            fig_radius_perf = eigenfaces.visualize_radius_performances(results)
-            register_figure(f"{PREFIX}-radius-perf-fig", fig_to_base64(fig_radius_perf))
-        except Exception as e:
-            print(f"Erreur lors de la visualisation des performances en fonction du rayon: {e}")
+        progress_callback(50, "Calcul des distances pour les utilisateurs non enregistrés...")
+        
+        non_enrolled_min_distances = []
+        non_enrolled_closest_ids = []
+        
+        for i, probe in enumerate(non_enrolled_flat):
+            distances = brute_force.compute_distances(gallery_flat, probe, norm)
+            min_idx = np.argmin(distances)
+            non_enrolled_min_distances.append(distances[min_idx])
+            non_enrolled_closest_ids.append(dataset.gallery_ids[min_idx])
+            
+            if progress_callback and i % 10 == 0:
+                progress_pct = 50 + (i / len(non_enrolled_flat)) * 30
+                progress_callback(int(progress_pct), f"Traitement de la probe {i+1}/{len(non_enrolled_flat)}...")
+        
+        enrolled_min_distances = np.array(enrolled_min_distances)
+        non_enrolled_min_distances = np.array(non_enrolled_min_distances)
+        
+        # Trouver le rayon optimal
+        progress_callback(80, "Recherche du rayon optimal...")
+        
+        best_radius = 0
+        best_metrics = None
+        best_confmat = None
+        
+        # Tester différentes valeurs de rayon
+        radius_candidates = np.percentile(enrolled_min_distances, np.arange(0, 101, 5))
+        metrics_by_radius = []
+        
+        for radius in radius_candidates:
+            # Calculer les métriques pour ce rayon
+            tp = np.sum(enrolled_min_distances <= radius)
+            fp = np.sum(non_enrolled_min_distances <= radius)
+            tn = len(non_enrolled_min_distances) - fp
+            fn = len(enrolled_min_distances) - tp
+            
+            # Calculer les métriques de performance
+            accuracy = (tp + tn) / (tp + tn + fp + fn) if (tp + tn + fp + fn) > 0 else 0
+            precision = tp / (tp + fp) if (tp + fp) > 0 else 0
+            recall = tp / (tp + fn) if (tp + fn) > 0 else 0
+            specificity = tn / (tn + fp) if (tn + fp) > 0 else 0
+            f1 = 2 * precision * recall / (precision + recall) if (precision + recall) > 0 else 0
+            
+            metrics = {
+                'radius': radius,
+                'accuracy': accuracy,
+                'precision': precision,
+                'recall': recall,
+                'specificity': specificity,
+                'f1_score': f1
+            }
+            
+            metrics_by_radius.append(metrics)
+            
+            # Mettre à jour le meilleur rayon si nécessaire
+            if best_metrics is None or metrics['accuracy'] > best_metrics['accuracy']:
+                best_radius = radius
+                best_metrics = metrics
+                best_confmat = np.array([[tn, fp], [fn, tp]])
+        
+        execution_time = time.time() - start_time
+        
+        # Créer les visualisations
+        progress_callback(90, "Création des visualisations...")
         
         # Visualisation de la distribution des distances
-        try:
-            fig_distances = eigenfaces.visualize_distances_distribution(results)
-            register_figure(f"{PREFIX}-distances-fig", fig_to_base64(fig_distances))
-        except Exception as e:
-            print(f"Erreur lors de la visualisation de la distribution des distances: {e}")
+        fig_distances = plt.figure(figsize=(10, 6))
+        ax = fig_distances.add_subplot(111)
+        
+        sns.histplot(enrolled_min_distances, bins=30, alpha=0.5, label='Utilisateurs enregistrés', ax=ax)
+        sns.histplot(non_enrolled_min_distances, bins=30, alpha=0.5, label='Utilisateurs non enregistrés', ax=ax)
+        
+        ax.axvline(best_radius, color='red', linestyle='--', label=f'Rayon optimal: {best_radius:.2f}')
+        ax.set_xlabel('Distance minimale')
+        ax.set_ylabel('Nombre de probes')
+        ax.set_title('Distribution des distances minimales')
+        ax.legend()
+        
+        # Enregistrer la figure
+        register_figure(f"{PREFIX}-distances-fig", fig_to_base64(fig_distances))
         
         # Visualisation de la matrice de confusion
-        try:
-            fig_confmat = eigenfaces.visualize_confusion_matrix(results)
-            register_figure(f"{PREFIX}-confmat-fig", fig_to_base64(fig_confmat))
-        except Exception as e:
-            print(f"Erreur lors de la visualisation de la matrice de confusion: {e}")
+        fig_confmat = plt.figure(figsize=(8, 6))
+        ax = fig_confmat.add_subplot(111)
+        
+        sns.heatmap(best_confmat, annot=True, fmt='d', cmap='Blues', 
+                   xticklabels=['Négatif', 'Positif'], 
+                   yticklabels=['Négatif', 'Positif'], ax=ax)
+        
+        ax.set_xlabel('Prédiction')
+        ax.set_ylabel('Vérité')
+        ax.set_title('Matrice de confusion')
+        
+        # Enregistrer la figure
+        register_figure(f"{PREFIX}-confmat-fig", fig_to_base64(fig_confmat))
+        
+        # Préparer les résultats
+        results = {
+            'radius': best_radius,
+            'norm': norm,
+            'performance': best_metrics,
+            'confusion_matrix': best_confmat.tolist(),
+            'enrolled_distances': enrolled_min_distances.tolist(),
+            'non_enrolled_distances': non_enrolled_min_distances.tolist(),
+            'execution_time': execution_time,
+            'enrolled_closest_ids': enrolled_closest_ids,
+            'non_enrolled_closest_ids': non_enrolled_closest_ids
+        }
+        
+        # Mettre à jour l'état global
+        update_global_state('last_evaluation_results', results)
+        update_global_state('last_evaluated_method', 'brute_force')
         
         progress_callback(100, "Évaluation terminée")
         
         return results
     
     # Lancer l'évaluation asynchrone
-    async_evaluate_eigenfaces(n_components, variance_threshold)
+    async_evaluate_brute_force(norm)
     
     # Le résultat sera mis à jour par le callback de progression
     return dash.no_update, "Évaluation en cours...", ""
 
-# Callback pour la mise à jour des visualisations
 @callback(
     [
-        Output(f"{PREFIX}-eigenfaces-fig", "src"),
-        Output(f"{PREFIX}-variance-fig", "src"),
-        Output(f"{PREFIX}-distances-fig", "src"),
-        Output(f"{PREFIX}-confmat-fig", "src"),
-        Output(f"{PREFIX}-radius-perf-fig", "src"),
-        Output(f"{PREFIX}-reconstruction-fig", "src"),
+        Output(f"{PREFIX}-distances-container", "children"),
+        Output(f"{PREFIX}-confmat-container", "children"),
         Output("evaluation-result-text", "children", allow_duplicate=True),
         Output("evaluation-time", "children", allow_duplicate=True)
     ],
@@ -432,54 +442,28 @@ def update_visualizations(n_intervals):
     status, result = get_result_update()
     
     if status is None and not is_processing():
-        return dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update
+        return dash.no_update, dash.no_update, dash.no_update, dash.no_update
     
-    # Vérifier si c'est un résultat d'évaluation Eigenfaces
+    # Vérifier si c'est un résultat d'évaluation Force Brute
     if status == "success" and isinstance(result, dict):
-        if 'radius' in result and 'performance' in result and not 'dataset' in result:
+        if 'radius' in result and 'performance' in result and 'norm' in result and not 'dataset' in result:
             # Récupérer le temps d'exécution
             execution_time = format_duration(result.get('execution_time', 0))
             
             # Générer le résumé des performances
-            summary = generate_performance_summary(result, 'eigenfaces')
+            summary = generate_performance_summary(result, 'brute_force')
             
             # Récupérer les figures enregistrées
-            eigenfaces_fig = get_figure(f"{PREFIX}-eigenfaces-fig")
-            variance_fig = get_figure(f"{PREFIX}-variance-fig")
             distances_fig = get_figure(f"{PREFIX}-distances-fig")
             confmat_fig = get_figure(f"{PREFIX}-confmat-fig")
-            radius_perf_fig = get_figure(f"{PREFIX}-radius-perf-fig")
-            reconstruction_fig = get_figure(f"{PREFIX}-reconstruction-fig")
             
-            return (
-                eigenfaces_fig or dash.no_update,
-                variance_fig or dash.no_update,
-                distances_fig or dash.no_update,
-                confmat_fig or dash.no_update,
-                radius_perf_fig or dash.no_update,
-                reconstruction_fig or dash.no_update,
-                summary,
-                execution_time
-            )
+            # Créer les conteneurs pour les visualisations
+            distances_container = html.Img(src=distances_fig, style={"width": "100%"}) if distances_fig else html.Div("Aucune visualisation disponible")
+            confmat_container = html.Img(src=confmat_fig, style={"width": "100%"}) if confmat_fig else html.Div("Aucune visualisation disponible")
+            
+            return distances_container, confmat_container, summary, execution_time
     
-    return dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update
-
-# Callback pour l'actualisation individuelle des figures
-for fig_type in ["eigenfaces", "variance", "distances", "confmat", "radius-perf", "reconstruction"]:
-    @callback(
-        Output(f"{PREFIX}-{fig_type}-fig", "src", allow_duplicate=True),
-        Input(f"refresh-{PREFIX}-{fig_type}-fig", "n_clicks"),
-        prevent_initial_call=True
-    )
-    def refresh_figure(n_clicks, fig_type=fig_type):
-        """
-        Callback pour l'actualisation d'une figure.
-        """
-        if not n_clicks:
-            return dash.no_update
-            
-        figure_data = get_figure(f"{PREFIX}-{fig_type}-fig")
-        return figure_data or dash.no_update
+    return dash.no_update, dash.no_update, dash.no_update, dash.no_update
 
 @callback(
     [
@@ -543,14 +527,13 @@ def on_select_image(n_clicks):
     ],
     [Input("authenticate-btn", "n_clicks")],
     [
-        State(f"{PREFIX}-variance-threshold", "value"),
-        State(f"{PREFIX}-n-components", "value"),
+        State(f"{PREFIX}-norm", "value"),
         State(f"{PREFIX}-results-store", "data"),
         State(f"{PREFIX}-probe-info-store", "data")
     ],
     prevent_initial_call=True
 )
-def on_authenticate(n_clicks, variance_threshold, n_components, results, probe_info):
+def on_authenticate(n_clicks, norm, results, probe_info):
     """
     Callback pour l'authentification d'une image.
     """
@@ -561,7 +544,6 @@ def on_authenticate(n_clicks, variance_threshold, n_components, results, probe_i
     gallery_processed = get_global_state('gallery_processed')
     current_probe = get_global_state('current_probe')
     dataset = get_global_state('dataset')
-    eigenfaces_model = get_global_state('eigenfaces_model')
     
     if gallery_processed is None or current_probe is None or dataset is None:
         return "Erreur: Données manquantes", "", dash.no_update
@@ -569,30 +551,29 @@ def on_authenticate(n_clicks, variance_threshold, n_components, results, probe_i
     # Récupérer le rayon optimal si disponible
     radius = results.get('radius') if results else None
     
-    if radius is None and eigenfaces_model is None:
+    if radius is None:
         return "Erreur: Veuillez d'abord évaluer les performances", "", dash.no_update
     
     # Effectuer l'authentification
-    import src.eigenfaces.authentication as eigenfaces
+    import src.brute_force.authentication as brute_force
     import time
     
     start_time = time.time()
     
-    # Si on a déjà un modèle entraîné, l'utiliser
-    if eigenfaces_model is not None:
-        is_authenticated, min_distance = eigenfaces_model.authenticate(current_probe, radius)
-        closest_person_idx = eigenfaces_model.find_closest_match(current_probe)
-        closest_person_id = dataset.gallery_ids[closest_person_idx]
-    else:
-        # Sinon, utiliser la fonction d'authentification directe
-        is_authenticated = eigenfaces.authenticate(current_probe, gallery_processed, radius)
-        
-        # Préparer le modèle pour trouver l'identité la plus proche
-        model = eigenfaces.EigenfacesModel(n_components, variance_threshold)
-        model.fit(gallery_processed)
-        closest_person_idx = model.find_closest_match(current_probe)
-        closest_person_id = dataset.gallery_ids[closest_person_idx]
-        min_distance = model.compute_min_distance(current_probe)
+    # Préparer les données
+    probe_flat = current_probe.flatten()
+    gallery_flat = gallery_processed.reshape(gallery_processed.shape[0], -1)
+    
+    # Calculer les distances
+    distances = brute_force.compute_distances(gallery_flat, probe_flat, norm)
+    
+    # Trouver l'image la plus proche
+    min_idx = np.argmin(distances)
+    min_distance = distances[min_idx]
+    
+    # Vérifier si la distance est inférieure au rayon
+    is_authenticated = min_distance <= radius
+    closest_person_id = dataset.gallery_ids[min_idx]
     
     execution_time = time.time() - start_time
     
