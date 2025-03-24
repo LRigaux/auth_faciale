@@ -347,6 +347,10 @@ def async_evaluate_performance(method, progress_callback=None):
         
         results['output'] = "Méthode CNN non implémentée complètement dans cette démo interactive.\nDans un cas réel, le modèle serait entraîné ici."
     
+    # Stocker les résultats dans l'état global pour visualisation ultérieure
+    global_state['last_evaluation_results'] = results
+    global_state['last_evaluated_method'] = method
+    
     progress_callback(100, "Évaluation terminée")
     return results
 
@@ -364,6 +368,9 @@ def async_authenticate(method, progress_callback=None):
     current_probe = global_state['current_probe']
     dataset = global_state['dataset']
     
+    if current_probe is None:
+        return {'error': "Aucune image sélectionnée pour l'authentification"}
+    
     progress_callback(10, f"Préparation pour l'authentification avec la méthode {method}...")
     
     result = {
@@ -372,58 +379,128 @@ def async_authenticate(method, progress_callback=None):
     }
     
     if method == "brute_force":
-        # Aplatir les images
-        probe_flat = current_probe.flatten() / 255.0
-        gallery_flat = gallery_processed.reshape(gallery_processed.shape[0], -1)
-        
-        progress_callback(30, "Calcul du rayon optimal...")
-        
-        # Séparer les probes en "enregistrés" et "non enregistrés"
-        enrolled_indices = [i for i, gt in enumerate(dataset.ground_truth) if gt]
-        non_enrolled_indices = [i for i, gt in enumerate(dataset.ground_truth) if not gt]
-        
-        enrolled_probes = global_state['probes_processed'][enrolled_indices].reshape(len(enrolled_indices), -1)
-        non_enrolled_probes = global_state['probes_processed'][non_enrolled_indices].reshape(len(non_enrolled_indices), -1)
-        
-        radius = brute_force.find_best_radius(
-            gallery_flat,
-            enrolled_probes,
-            non_enrolled_probes
-        )
+        # Utiliser le rayon déjà calculé s'il existe
+        if 'last_evaluation_results' in global_state and global_state.get('last_evaluated_method') == method:
+            radius = global_state['last_evaluation_results'].get('radius')
+            if radius is not None:
+                progress_callback(40, f"Utilisation du rayon précédemment calculé: {radius:.4f}...")
+            else:
+                # Recalculer le rayon
+                progress_callback(30, "Calcul du rayon optimal...")
+                
+                # Aplatir les images
+                probe_flat = current_probe.flatten() / 255.0
+                gallery_flat = gallery_processed.reshape(gallery_processed.shape[0], -1)
+                
+                # Séparer les probes
+                enrolled_indices = [i for i, gt in enumerate(dataset.ground_truth) if gt]
+                non_enrolled_indices = [i for i, gt in enumerate(dataset.ground_truth) if not gt]
+                
+                enrolled_probes = global_state['probes_processed'][enrolled_indices].reshape(len(enrolled_indices), -1)
+                non_enrolled_probes = global_state['probes_processed'][non_enrolled_indices].reshape(len(non_enrolled_indices), -1)
+                
+                radius = brute_force.find_best_radius(
+                    gallery_flat,
+                    enrolled_probes,
+                    non_enrolled_probes
+                )
+        else:
+            # Recalculer le rayon
+            progress_callback(30, "Calcul du rayon optimal...")
+            
+            # Aplatir les images
+            probe_flat = current_probe.flatten() / 255.0
+            gallery_flat = gallery_processed.reshape(gallery_processed.shape[0], -1)
+            
+            # Séparer les probes
+            enrolled_indices = [i for i, gt in enumerate(dataset.ground_truth) if gt]
+            non_enrolled_indices = [i for i, gt in enumerate(dataset.ground_truth) if not gt]
+            
+            enrolled_probes = global_state['probes_processed'][enrolled_indices].reshape(len(enrolled_indices), -1)
+            non_enrolled_probes = global_state['probes_processed'][non_enrolled_indices].reshape(len(non_enrolled_indices), -1)
+            
+            radius = brute_force.find_best_radius(
+                gallery_flat,
+                enrolled_probes,
+                non_enrolled_probes
+            )
         
         progress_callback(70, "Authentification...")
+        
+        # Aplatir l'image si ce n'est pas déjà fait
+        if len(current_probe.shape) > 1:
+            probe_flat = current_probe.flatten() / 255.0
+        else:
+            probe_flat = current_probe / 255.0
+            
+        gallery_flat = gallery_processed.reshape(gallery_processed.shape[0], -1)
         
         # Authentifier
         authenticated = brute_force.authenticate(probe_flat, gallery_flat, radius)
         result['authenticated'] = authenticated
         
     elif method == "eigenfaces":
-        eigenfaces_model = global_state['eigenfaces_model']
+        eigenfaces_model = global_state.get('eigenfaces_model')
         if eigenfaces_model is None:
             result['error'] = "Le modèle Eigenfaces n'est pas encore entraîné. Évaluez d'abord les performances."
             progress_callback(100, "Erreur")
             return result
         
-        # Aplatir l'image
-        probe_flat = current_probe.flatten() / 255.0
-        gallery_flat = gallery_processed.reshape(gallery_processed.shape[0], -1)
-        
-        progress_callback(30, "Calcul du rayon optimal...")
-        
-        # Séparer les probes
-        enrolled_indices = [i for i, gt in enumerate(dataset.ground_truth) if gt]
-        non_enrolled_indices = [i for i, gt in enumerate(dataset.ground_truth) if not gt]
-        
-        enrolled_probes = global_state['probes_processed'][enrolled_indices].reshape(len(enrolled_indices), -1)
-        non_enrolled_probes = global_state['probes_processed'][non_enrolled_indices].reshape(len(non_enrolled_indices), -1)
-        
-        radius, _ = eigenfaces.find_best_radius(
-            gallery_flat,
-            enrolled_probes,
-            non_enrolled_probes
-        )
+        # Utiliser le rayon déjà calculé s'il existe
+        if 'last_evaluation_results' in global_state and global_state.get('last_evaluated_method') == method:
+            radius = global_state['last_evaluation_results'].get('radius')
+            if radius is not None:
+                progress_callback(40, f"Utilisation du rayon précédemment calculé: {radius:.4f}...")
+            else:
+                # Recalculer le rayon
+                progress_callback(30, "Calcul du rayon optimal...")
+                
+                # Aplatir l'image
+                probe_flat = current_probe.flatten() / 255.0
+                gallery_flat = gallery_processed.reshape(gallery_processed.shape[0], -1)
+                
+                # Séparer les probes
+                enrolled_indices = [i for i, gt in enumerate(dataset.ground_truth) if gt]
+                non_enrolled_indices = [i for i, gt in enumerate(dataset.ground_truth) if not gt]
+                
+                enrolled_probes = global_state['probes_processed'][enrolled_indices].reshape(len(enrolled_indices), -1)
+                non_enrolled_probes = global_state['probes_processed'][non_enrolled_indices].reshape(len(non_enrolled_indices), -1)
+                
+                radius, _ = eigenfaces.find_best_radius(
+                    gallery_flat,
+                    enrolled_probes,
+                    non_enrolled_probes
+                )
+        else:
+            # Recalculer le rayon
+            progress_callback(30, "Calcul du rayon optimal...")
+            
+            # Aplatir l'image
+            probe_flat = current_probe.flatten() / 255.0
+            gallery_flat = gallery_processed.reshape(gallery_processed.shape[0], -1)
+            
+            # Séparer les probes
+            enrolled_indices = [i for i, gt in enumerate(dataset.ground_truth) if gt]
+            non_enrolled_indices = [i for i, gt in enumerate(dataset.ground_truth) if not gt]
+            
+            enrolled_probes = global_state['probes_processed'][enrolled_indices].reshape(len(enrolled_indices), -1)
+            non_enrolled_probes = global_state['probes_processed'][non_enrolled_indices].reshape(len(non_enrolled_indices), -1)
+            
+            radius, _ = eigenfaces.find_best_radius(
+                gallery_flat,
+                enrolled_probes,
+                non_enrolled_probes
+            )
         
         progress_callback(70, "Authentification...")
+        
+        # Aplatir l'image si ce n'est pas déjà fait
+        if len(current_probe.shape) > 1:
+            probe_flat = current_probe.flatten() / 255.0
+        else:
+            probe_flat = current_probe / 255.0
+            
+        gallery_flat = gallery_processed.reshape(gallery_processed.shape[0], -1)
         
         # Authentifier
         authenticated = eigenfaces.authenticate(probe_flat, gallery_flat, radius, eigenfaces_model)
@@ -441,6 +518,7 @@ def async_authenticate(method, progress_callback=None):
         Output("result-text", "children"),
         Output("evaluate-btn", "disabled"),
         Output("select-image-btn", "disabled"),
+        Output("authenticate-btn", "disabled"),
         Output("modal-body", "children"),
         Output("info-modal", "is_open")
     ],
@@ -459,6 +537,7 @@ def load_data(n_clicks, dataset_num):
         "Chargement des données en cours...", 
         True,  # Désactiver le bouton d'évaluation pendant le chargement
         True,  # Désactiver le bouton de sélection d'image pendant le chargement
+        True,  # Désactiver le bouton d'authentification pendant le chargement
         "",
         False
     )
@@ -471,9 +550,11 @@ def load_data(n_clicks, dataset_num):
         Output("result-text", "children", allow_duplicate=True),
         Output("evaluate-btn", "disabled", allow_duplicate=True),
         Output("select-image-btn", "disabled", allow_duplicate=True),
+        Output("authenticate-btn", "disabled", allow_duplicate=True),
         Output("viz-metrics-btn", "disabled"),
         Output("viz-eigenfaces-btn", "disabled"),
-        Output("viz-cnn-btn", "disabled")
+        Output("viz-cnn-btn", "disabled"),
+        Output("evaluation-results-store", "data")
     ],
     Input("progress-interval", "n_intervals"),
     prevent_initial_call=True
@@ -491,11 +572,13 @@ def update_progress(n_intervals):
     
     # Vérifier s'il y a un résultat
     result_text = None
-    enable_evaluate = True
-    enable_select_image = True
-    enable_viz_metrics = True
-    enable_viz_eigenfaces = True if global_state.get('eigenfaces_model') is not None else False
-    enable_viz_cnn = True if global_state.get('cnn_model') is not None else False
+    enable_evaluate = False
+    enable_select_image = False
+    enable_authenticate = True  # Par défaut désactivé
+    enable_viz_metrics = True   # Par défaut désactivé
+    enable_viz_eigenfaces = False
+    enable_viz_cnn = False
+    evaluation_results = dash.no_update
     
     try:
         if not result_queue.empty():
@@ -504,6 +587,11 @@ def update_progress(n_intervals):
             if status == "success":
                 if 'output' in result:
                     result_text = result['output']
+                    
+                    # Si c'est un résultat d'évaluation, stocker les métriques
+                    if 'metrics' in result:
+                        evaluation_results = result
+                        enable_viz_metrics = False  # On active la visualisation des métriques
                 elif 'message' in result:
                     result_text = result['message']
                     if 'gallery_shape' in result and 'probes_shape' in result:
@@ -518,14 +606,33 @@ def update_progress(n_intervals):
                 # Activer/désactiver les boutons en fonction de l'état
                 enable_evaluate = global_state.get('dataset') is not None
                 enable_select_image = global_state.get('dataset') is not None
+                enable_authenticate = global_state.get('current_probe') is not None
+                
+                # Activer les boutons de visualisation selon l'état
+                enable_viz_metrics = 'last_evaluation_results' in global_state and 'metrics' in global_state['last_evaluation_results']
+                enable_viz_eigenfaces = global_state.get('eigenfaces_model') is not None
+                enable_viz_cnn = global_state.get('cnn_model') is not None
             elif status == "error":
                 result_text = f"Erreur: {result}"
+                
+                # En cas d'erreur, on active quand même les boutons si possible
+                enable_evaluate = global_state.get('dataset') is not None
+                enable_select_image = global_state.get('dataset') is not None
+                enable_authenticate = global_state.get('current_probe') is not None
     except queue.Empty:
         pass
     
     # Si l'application n'est pas en train de traiter et qu'il n'y a pas de nouveau résultat
-    if not global_state['is_processing'] and result_text is None:
-        return dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update
+    if not global_state['is_processing'] and result_text is None and progress_value == 0:
+        # Vérifier l'état actuel pour décider quels boutons activer/désactiver
+        enable_evaluate = global_state.get('dataset') is not None
+        enable_select_image = global_state.get('dataset') is not None
+        enable_authenticate = global_state.get('current_probe') is not None
+        enable_viz_metrics = 'last_evaluation_results' in global_state and 'metrics' in global_state['last_evaluation_results']
+        enable_viz_eigenfaces = global_state.get('eigenfaces_model') is not None
+        enable_viz_cnn = global_state.get('cnn_model') is not None
+        
+        return dash.no_update, dash.no_update, dash.no_update, not enable_evaluate, not enable_select_image, not enable_authenticate, not enable_viz_metrics, not enable_viz_eigenfaces, not enable_viz_cnn, dash.no_update
     
     # Sinon, renvoyer les mises à jour
     return (
@@ -534,14 +641,20 @@ def update_progress(n_intervals):
         result_text if result_text is not None else dash.no_update,
         not enable_evaluate,
         not enable_select_image,
+        not enable_authenticate,
         not enable_viz_metrics,
         not enable_viz_eigenfaces,
-        not enable_viz_cnn
+        not enable_viz_cnn,
+        evaluation_results
     )
 
 # Callback pour l'évaluation des performances
 @app.callback(
-    Output("result-text", "children", allow_duplicate=True),
+    [
+        Output("result-text", "children", allow_duplicate=True),
+        Output("authenticate-btn", "disabled", allow_duplicate=True),
+        Output("viz-metrics-btn", "disabled", allow_duplicate=True)
+    ],
     Input("evaluate-btn", "n_clicks"),
     State("method-select", "value"),
     prevent_initial_call=True
@@ -553,14 +666,15 @@ def evaluate_performance(n_clicks, method):
     # Lancer l'évaluation asynchrone
     async_evaluate_performance(method)
     
-    return "Évaluation des performances en cours..."
+    return "Évaluation des performances en cours...", True, True
 
 # Callback pour sélectionner une image
 @app.callback(
     [
         Output("probe-image", "src"),
         Output("probe-info-store", "data"),
-        Output("result-text", "children", allow_duplicate=True)
+        Output("result-text", "children", allow_duplicate=True),
+        Output("authenticate-btn", "disabled", allow_duplicate=True)
     ],
     Input("select-image-btn", "n_clicks"),
     prevent_initial_call=True
@@ -571,7 +685,7 @@ def select_image(n_clicks):
     
     global global_state
     if global_state['dataset'] is None:
-        return dash.no_update, dash.no_update, "Veuillez d'abord charger les données."
+        return dash.no_update, dash.no_update, "Veuillez d'abord charger les données.", True
     
     # Choisir une image aléatoire des probes
     dataset = global_state['dataset']
@@ -600,12 +714,16 @@ def select_image(n_clicks):
     return (
         f"data:image/png;base64,{img_str}",
         probe_info,
-        f"Image sélectionnée.\nIdentité: {current_probe_identity}\nDevrait être authentifié: {current_ground_truth}"
+        f"Image sélectionnée.\nIdentité: {current_probe_identity}\nDevrait être authentifié: {current_ground_truth}",
+        False  # Activer le bouton d'authentification
     )
 
 # Callback pour l'authentification
 @app.callback(
-    Output("authenticate-btn", "disabled", allow_duplicate=True),
+    [
+        Output("result-text", "children", allow_duplicate=True),
+        Output("authenticate-btn", "disabled", allow_duplicate=True)
+    ],
     Input("authenticate-btn", "n_clicks"),
     State("method-select", "value"),
     prevent_initial_call=True
@@ -616,12 +734,12 @@ def authenticate(n_clicks, method):
     
     global global_state
     if global_state.get('current_probe') is None:
-        return False
+        return "Veuillez d'abord sélectionner une image.", False
     
     # Lancer l'authentification asynchrone
     async_authenticate(method)
     
-    return True  # Désactiver le bouton pendant l'authentification
+    return "Authentification en cours...", True
 
 # Callback pour visualiser les eigenfaces
 @app.callback(
@@ -677,27 +795,47 @@ def visualize_eigenfaces(n_clicks):
 @app.callback(
     Output("visualization-graph", "figure", allow_duplicate=True),
     Input("viz-metrics-btn", "n_clicks"),
-    State("evaluation-results-store", "data"),
     prevent_initial_call=True
 )
-def visualize_metrics(n_clicks, results_data):
-    if n_clicks is None or results_data is None:
+def visualize_metrics(n_clicks):
+    if n_clicks is None:
         raise PreventUpdate
+    
+    global global_state
+    if 'last_evaluation_results' not in global_state or 'metrics' not in global_state['last_evaluation_results']:
+        return go.Figure()
+    
+    # Récupérer les métriques
+    metrics = global_state['last_evaluation_results']['metrics']
+    method = global_state.get('last_evaluated_method', 'inconnue')
     
     # Créer un graphique de comparaison des métriques
     fig = go.Figure()
     
-    # Exemple simple pour le moment (à compléter avec les données réelles)
+    # Convertir les métriques en liste pour le graphique
+    metric_names = ['Précision', 'Rappel', 'Exactitude', 'Spécificité', 'F1-Score']
+    metric_values = [
+        metrics.get('precision', 0),
+        metrics.get('recall', 0),
+        metrics.get('accuracy', 0),
+        metrics.get('specificity', 0),
+        metrics.get('f1_score', 0)
+    ]
+    
     fig.add_trace(go.Bar(
-        x=['Précision', 'Rappel', 'Exactitude', 'Spécificité'],
-        y=[0.85, 0.78, 0.82, 0.88],
-        name='Méthode actuelle'
+        x=metric_names,
+        y=metric_values,
+        name=f'Méthode {method}',
+        text=[f'{val:.2f}' for val in metric_values],
+        textposition='auto',
+        marker_color=['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd']
     ))
     
     fig.update_layout(
-        title="Métriques de performance",
+        title=f"Métriques de performance - Méthode {method}",
         xaxis_title="Métrique",
         yaxis_title="Valeur",
+        yaxis=dict(range=[0, 1]),
         template="plotly_white"
     )
     
